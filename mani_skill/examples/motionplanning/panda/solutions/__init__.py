@@ -9,3 +9,5 @@ from .lift_peg_upright import solve as solveLiftPegUpright
 from .pull_cube import solve as solvePullCube
 from .draw_svg import solve as solveDrawSVG
 from .draw_triangle import solve as solveDrawTriangle
+from .stack_pyramid import solve as solveStackPyramid
+from .pick_and_place import solve as solvePickAndPlace
