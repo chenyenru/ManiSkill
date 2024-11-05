@@ -289,6 +289,7 @@ capabilities can be simulated and trained properly. Hence there is extra code fo
 </div>
 
 ## StackPyramid-v1
+![dense-reward][reward-badge]
 :::{dropdown} Task Card
 :icon: note
 :color: primary
@@ -305,11 +306,12 @@ The goal is to pick up a red cube, place it next to the green cube, and stack th
 **Success Conditions:**
 - the blue cube is static
 - the blue cube is on top of both the red and green cube (to within half of the cube size)
+- the blue cube is static
 - none of the red, green, blue cubes are grasped by the robot (robot must let go of the cubes)
 :::
 
 <video preload="auto" controls="True" width="100%">
-<source src="https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/StackPyramid-v1_rt.mp4" type="video/mp4">
+<source src="https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/StackCube-v1_rt.mp4" type="video/mp4">
 </video>
 
 
