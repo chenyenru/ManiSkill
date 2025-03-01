@@ -39,9 +39,11 @@ def parse_args(args=None):
     parser.add_argument("--shader", default="default", type=str, help="Change shader used for rendering. Default is 'default' which is very fast. Can also be 'rt' for ray tracing and generating photo-realistic renders. Can also be 'rt-fast' for a faster but lower quality ray-traced renderer")
     parser.add_argument("--record-dir", type=str, default="demos", help="where to save the recorded trajectories")
     parser.add_argument("--num-procs", type=int, default=1, help="Number of processes to use to help parallelize the trajectory replay process. This uses CPU multiprocessing and only works with the CPU simulation backend at the moment.")
+    parser.add_argument("--ab", type=float, default=50.0, help="Percentage of trajectories where cube A is moved to cube B")
+
     return parser.parse_args()
 
-def _main(args, proc_id: int = 0, start_seed: int = 0) -> str:
+def _main(args, proc_id: int = 0, start_seed: int = 0, num_a_to_b: int = 0) -> str:
     env_id = args.env_id
     env = gym.make(
         env_id,
@@ -82,9 +84,14 @@ def _main(args, proc_id: int = 0, start_seed: int = 0) -> str:
     solution_episode_lengths = []
     failed_motion_plans = 0
     passed = 0
-    while True:
+    a_to_b = []
+    while passed < args.num_traj:
         try:
-            res = solve(env, seed=seed, debug=False, vis=True if args.vis else False)
+            if env_id == "StackPyramid-v1":
+                move_cube_a_to_b = passed < num_a_to_b
+                res = solve(env, move_cube_a_to_b=move_cube_a_to_b, seed=seed, debug=False, vis=True if args.vis else False)
+            else:
+                res = solve(env, seed=seed, debug=False, vis=True if args.vis else False)
         except Exception as e:
             print(f"Cannot find valid solution because of an error in motion planning solution: {e}")
             res = -1
@@ -116,21 +123,36 @@ def _main(args, proc_id: int = 0, start_seed: int = 0) -> str:
                     # min_episode_length=np.min(solution_episode_lengths)
                 )
             )
+            a_to_b.append(move_cube_a_to_b)
             seed += 1
             passed += 1
-            if passed == args.num_traj:
-                break
     env.close()
+    print(f"Move a to b count: {a_to_b.count(True)}")
     return output_h5_path
 
 def main(args):
     if args.num_procs > 1 and args.num_procs < args.num_traj:
         if args.num_traj < args.num_procs:
             raise ValueError("Number of trajectories should be greater than or equal to number of processes")
-        args.num_traj = args.num_traj // args.num_procs
-        seeds = [*range(0, args.num_procs * args.num_traj, args.num_traj)]
+        
+        base_num_traj = args.num_traj // args.num_procs
+        remainder = args.num_traj % args.num_procs
+        num_trajs = [base_num_traj + (1 if i < remainder else 0) for i in range(args.num_procs)]
+        
+        seeds = [sum(num_trajs[:i]) for i in range(args.num_procs)]
+
+        total_a_to_b = int(args.num_traj * args.ab / 100)
+        num_a_to_b = [total_a_to_b // args.num_procs + (1 if i < total_a_to_b % args.num_procs else 0) for i in range(args.num_procs)]
+
+        print(f"Total move_a_to_b trajectories: {total_a_to_b}")
+        print(f"Distribution of move_a_to_b trajectories among processes: {num_a_to_b}")
+
         pool = mp.Pool(args.num_procs)
-        proc_args = [(deepcopy(args), i, seeds[i]) for i in range(args.num_procs)]
+        proc_args = [(deepcopy(args), i, seeds[i], num_a_to_b[i]) for i in range(args.num_procs)]
+        
+        for i, num_traj in enumerate(num_trajs):
+            proc_args[i][0].num_traj = num_traj
+        
         res = pool.starmap(_main, proc_args)
         pool.close()
         # Merge trajectory files

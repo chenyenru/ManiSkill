@@ -12,7 +12,7 @@ from mani_skill.examples.motionplanning.panda.utils import (
 from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.utils.structs import Pose
 
-def solve(env: StackPyramidEnv, seed=None, debug=False, vis=False):
+def solve(env: StackPyramidEnv, move_cube_a_to_b=True, seed=None, debug=False, vis=False):
     env.reset(seed=seed)
     assert env.unwrapped.control_mode in [
         "pd_joint_pos",
@@ -29,11 +29,19 @@ def solve(env: StackPyramidEnv, seed=None, debug=False, vis=False):
     FINGER_LENGTH = 0.025
     env = env.unwrapped
 
+    if move_cube_a_to_b:
+        moving_cube = env.cubeA
+        target_cube = env.cubeB
+    else:
+        moving_cube = env.cubeB
+        target_cube = env.cubeA
+
+
     # -------------------------------------------------------------------------- #
-    # Push Cube A to be next to Cube B
+    # Move the specified cube to be next to the other cube
     # -------------------------------------------------------------------------- #
-    # Move Gripper to Cube A
-    obb = get_actor_obb(env.cubeA)
+    # Move Gripper to the specified cube
+    obb = get_actor_obb(moving_cube)
     approaching = np.array([0, 0, -1])
     target_closing = env.agent.tcp.pose.to_transformation_matrix()[0, :3, 1].cpu().numpy()
     grasp_info = compute_grasp_info_by_obb(
@@ -43,12 +51,12 @@ def solve(env: StackPyramidEnv, seed=None, debug=False, vis=False):
         depth=FINGER_LENGTH,
     )
     closing, center = grasp_info["closing"], grasp_info["center"]
-    distance = np.abs(np.linalg.norm(env.cubeA.pose.sp.p, axis=0) - np.linalg.norm(env.cubeB.pose.sp.p, axis=0))
+    distance = np.abs(np.linalg.norm(moving_cube.pose.sp.p, axis=0) - np.linalg.norm(target_cube.pose.sp.p, axis=0))
     print(f"Distance: {distance}")
     if (distance > 0.009):
         print(f"Distance >= 0.009: {distance}")
         planner.close_gripper()
-        grasp_pose = env.agent.build_grasp_pose(approaching, closing, env.cubeA.pose.sp.p)
+        grasp_pose = env.agent.build_grasp_pose(approaching, closing, moving_cube.pose.sp.p)
 
         # Reach
         reach_pose = grasp_pose * sapien.Pose([0, 0, -0.05])
@@ -59,7 +67,7 @@ def solve(env: StackPyramidEnv, seed=None, debug=False, vis=False):
         planner.close_gripper()
 
         # Move to Goal Pose
-        goal_pose = sapien.Pose(env.cubeB.pose.sp.p * 0.8, grasp_pose.q)
+        goal_pose = sapien.Pose(target_cube.pose.sp.p * 0.8, grasp_pose.q)
         planner.move_to_pose_with_screw(goal_pose)
         res = planner.open_gripper()
 
