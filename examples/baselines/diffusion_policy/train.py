@@ -93,6 +93,14 @@ class Args:
     # additional tags/configs for logging purposes to wandb and shared comparisons with other algorithms
     demo_type: Optional[str] = None
 
+    num_demos_logging: Optional[int] = None
+    """number of demonstrations used for training"""
+
+    behavior_distribution: Optional[List] = None
+    """Distribution of behaviors in the demonstration dataset. E.g., [0.5, 0.5] for two behaviors"""
+    num_behaviors: Optional[int] = None
+    """Number of behaviors in the demonstration dataset"""
+
 
 class SmallDemoDataset_DiffusionPolicy(Dataset): # Load everything into GPU memory
     def __init__(self, data_path, device, num_traj):
@@ -152,8 +160,10 @@ class SmallDemoDataset_DiffusionPolicy(Dataset): # Load everything into GPU memo
             obs_seq = torch.cat([obs_seq[0].repeat(-start, 1), obs_seq], dim=0)
             act_seq = torch.cat([act_seq[0].repeat(-start, 1), act_seq], dim=0)
         if end > L: # pad after the trajectory
-            gripper_action = act_seq[-1, -1]
-            pad_action = torch.cat((self.pad_action_arm, gripper_action[None]), dim=0)
+            # gripper_action = act_seq[-1, -1]
+            # pad_action = torch.cat((self.pad_action_arm, gripper_action[None]), dim=0)
+            # act_seq = torch.cat([act_seq, pad_action.repeat(end-L, 1)], dim=0)
+            pad_action = act_seq[-1]
             act_seq = torch.cat([act_seq, pad_action.repeat(end-L, 1)], dim=0)
             # making the robot (arm and gripper) stay still
         assert obs_seq.shape[0] == self.obs_horizon and act_seq.shape[0] == self.pred_horizon
@@ -174,7 +184,7 @@ class Agent(nn.Module):
         self.pred_horizon = args.pred_horizon
         assert len(env.single_observation_space.shape) == 2 # (obs_horizon, obs_dim)
         assert len(env.single_action_space.shape) == 1 # (act_dim, )
-        assert (env.single_action_space.high == 1).all() and (env.single_action_space.low == -1).all()
+        # assert (env.single_action_space.high == 1).all() and (env.single_action_space.low == -1).all()
         # denoising results will be clipped to [-1,1], so the action should be in [-1,1] as well
         self.act_dim = env.single_action_space.shape[0]
 
@@ -189,7 +199,7 @@ class Agent(nn.Module):
         self.noise_scheduler = DDPMScheduler(
             num_train_timesteps=self.num_diffusion_iters,
             beta_schedule='squaredcos_cap_v2', # has big impact on performance, try not to change
-            clip_sample=True, # clip output to [-1,1] to improve stability
+            clip_sample=False, # clip output to [-1,1] to improve stability
             prediction_type='epsilon' # predict noise (instead of denoised action)
         )
 
@@ -300,6 +310,9 @@ if __name__ == "__main__":
     other_kwargs = dict(obs_horizon=args.obs_horizon)
     envs = make_eval_envs(args.env_id, args.num_eval_envs, args.sim_backend, env_kwargs, other_kwargs, video_dir=f'runs/{run_name}/videos' if args.capture_video else None)
 
+    if args.behavior_distribution is not None:
+        args.behavior_distribution = [float(x) for x in args.behavior_distribution]
+
     if args.track:
         import wandb
         config = vars(args)
@@ -333,6 +346,11 @@ if __name__ == "__main__":
     )
     if args.num_demos is None:
         args.num_demos = len(dataset)
+
+    
+    # Sometimes trajectory replay fails to load all trajectories, 
+    # so we need to log the actual number of demos
+    writer.add_scalar("actual_num_demos", args.num_demos, 0)
 
     # agent setup
     agent = Agent(envs, args).to(device)
@@ -380,6 +398,7 @@ if __name__ == "__main__":
                     print(
                         f"New best {k}_rate: {eval_metrics[k]:.4f}. Saving checkpoint."
                     )
+
     def log_metrics(iteration):
         if iteration % args.log_freq == 0:
             writer.add_scalar(
@@ -432,6 +451,10 @@ if __name__ == "__main__":
 
     evaluate_and_save_best(args.total_iters)
     log_metrics(args.total_iters)
+
+    for k, v in best_eval_metrics.items():
+        writer.add_scalar(f"best_eval/{k}", v, args.total_iters)
+        print(f"Best {k}: {v:.4f}")
 
     envs.close()
     writer.close()
