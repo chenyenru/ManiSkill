@@ -148,7 +148,7 @@ class StackPyramidEnv(BaseEnv):
         success_C_B = evaluate_cube_distance(offset_BC, self.cubeC, self.cubeB, "top")
         success_C_A = evaluate_cube_distance(offset_AC, self.cubeC, self.cubeA, "top")
         
-        success = success_A_B and success_C_B and success_C_A
+        success = torch.logical_and(success_A_B, torch.logical_and(success_C_B, success_C_A))
 
         return {
             "success": success,

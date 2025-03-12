@@ -96,7 +96,7 @@ class Args:
     num_demos_logging: Optional[int] = None
     """number of demonstrations used for training"""
 
-    behavior_distribution: Optional[List] = None
+    behavior_distribution: Optional[List[float]] = None
     """Distribution of behaviors in the demonstration dataset. E.g., [0.5, 0.5] for two behaviors"""
     num_behaviors: Optional[int] = None
     """Number of behaviors in the demonstration dataset"""
