@@ -68,7 +68,7 @@ def _main(args, proc_id: int = 0, start_seed: int = 0, num_a_to_b: int = 0) -> s
         new_traj_name = new_traj_name + "." + str(proc_id)
     env = RecordEpisode(
         env,
-        output_dir=osp.join(args.record_dir, env_id, "motionplanning"),
+        output_dir=osp.join(args.record_dir, env_id, "mp-full"),
         trajectory_name=new_traj_name, save_video=args.save_video,
         source_type="motionplanning",
         source_desc="official motion planning solution from ManiSkill contributors",

@@ -126,6 +126,7 @@ class SmallDemoDataset_DiffusionPolicy(Dataset): # Load everything into GPU memo
         self.obs_horizon, self.pred_horizon = obs_horizon, pred_horizon = args.obs_horizon, args.pred_horizon
         self.slices = []
         num_traj = len(trajectories['actions'])
+        self.num_traj = num_traj
         total_transitions = 0
         for traj_idx in range(num_traj):
             L = trajectories['actions'][traj_idx].shape[0]
@@ -345,7 +346,7 @@ if __name__ == "__main__":
         worker_init_fn=lambda worker_id: worker_init_fn(worker_id, base_seed=args.seed),
     )
     if args.num_demos is None:
-        args.num_demos = len(dataset)
+        args.num_demos = dataset.num_traj
 
     
     # Sometimes trajectory replay fails to load all trajectories, 

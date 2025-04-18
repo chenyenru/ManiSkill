@@ -91,7 +91,7 @@ def merge_trajectory_percentage(output_path: str, traj_paths: list, behavior_dis
     Raises:
         AssertionError: If there is a conflict in the episode IDs when recompute_id is False.
     """
-    print(len(traj_paths), len(behavior_distribution))
+    # print(len(traj_paths), len(behavior_distribution))
     assert len(traj_paths) == len(behavior_distribution), "The number of trajectory paths must match the number of behavior distributions."
     assert sum(behavior_distribution) == 100, "The sum of behavior distributions must be 100%."
 
@@ -159,9 +159,10 @@ def main():
     args = parser.parse_args()
 
     traj_paths = []
-    for input_dir in args.input_dirs:
-        input_dir = Path(input_dir)
-        traj_paths.extend(sorted(input_dir.rglob(args.pattern)))
+    if args.input_dirs is not None:
+        for input_dir in args.input_dirs:
+            input_dir = Path(input_dir)
+            traj_paths.extend(sorted(input_dir.rglob(args.pattern)))
 
     output_dir = Path(args.output_path).parent
     output_dir.mkdir(exist_ok=True, parents=True)

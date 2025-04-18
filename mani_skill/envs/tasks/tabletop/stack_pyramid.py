@@ -7,6 +7,10 @@ import torch
 from mani_skill.agents.robots import Fetch, Panda
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.envs.utils import randomization
+from mani_skill.utils.geometry.rotation_conversions import (
+    euler_angles_to_matrix,
+    matrix_to_quaternion,
+)
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import common, sapien_utils
 from mani_skill.utils.building import actors
@@ -72,47 +76,93 @@ class StackPyramidEnv(BaseEnv):
         )
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
+        # EXPERIMENT for Fixed Reset States
         with torch.device(self.device):
             b = len(env_idx)
             self.table_scene.initialize(env_idx)
+            
+            # Use the cube half size (assumed same for all cubes)
+            cube_half = self.cube_half_size[0].item()  # e.g. 0.02
 
-            xyz = torch.zeros((b, 3))
-            xyz[:, 2] = 0.02
-            xy = torch.rand((b, 2)) * 0.2 - 0.1
-            region = [[-0.1, -0.2], [0.1, 0.2]]
+            # Sample a common base position for cubes A and B on the table
+            # base_xy = torch.rand((b, 2)) * 0.2 - 0.1
+            base_xy = torch.tensor([0.0, 0.0], device=self.device).repeat(b, 1)
+
+            
+            # Create a sampler for small random offsets in a limited region
+            region = [[-0.05, -0.05], [0.05, 0.05]]
             sampler = randomization.UniformPlacementSampler(bounds=region, batch_size=b)
-            radius = torch.linalg.norm(torch.tensor([0.02, 0.02])) + 0.001
-            cubeA_xy = xy + sampler.sample(radius, 100)
-            cubeB_xy = xy + sampler.sample(radius, 100)
-            cubeC_xy = xy + sampler.sample(radius, 100)
+            
+            # Fixed offsets for Cube A and Cube B
+            offset_A = torch.tensor([-0.06, 0.05], device=self.device).repeat(b, 1)
+            offset_B = torch.tensor([0.06, -0.05], device=self.device).repeat(b, 1)
+            cubeA_xy = base_xy + offset_A
+            cubeB_xy = base_xy + offset_B
+            
+            # Place Cube C at the midpoint between Cube A and Cube B
+            cubeC_xy = torch.tensor([0.1, 0.1], device=self.device).repeat(b, 1)
 
+            FIXED_QS_EULER = torch.zeros((1, 3))
+            FIXED_QS = matrix_to_quaternion(euler_angles_to_matrix(FIXED_QS_EULER, convention="XYZ"))
+            # Set Cube A at table level (z = 0.02)
+            xyz = torch.zeros((b, 3))
+            xyz[:, 2] = 0.02  # table height offset
             xyz[:, :2] = cubeA_xy
-            qs = randomization.random_quaternions(
-                b,
-                lock_x=True,
-                lock_y=True,
-                lock_z=False,
-            )
+            qs = FIXED_QS
             self.cubeA.set_pose(Pose.create_from_pq(p=xyz.clone(), q=qs))
 
+            # Set Cube B at table level (z = 0.02)
             xyz[:, :2] = cubeB_xy
-            qs = randomization.random_quaternions(
-                b,
-                lock_x=True,
-                lock_y=True,
-                lock_z=False,
-            )
+            qs = FIXED_QS
             self.cubeB.set_pose(Pose.create_from_pq(p=xyz.clone(), q=qs))
-
+            
+            # Set Cube C
+            xyz[:, 2] = 0.02
             xyz[:, :2] = cubeC_xy
-            qs = randomization.random_quaternions(
-                b,
-                lock_x=True,
-                lock_y=True,
-                lock_z=False
-            )
+            qs = FIXED_QS
             self.cubeC.set_pose(Pose.create_from_pq(p=xyz, q=qs))
-        # ...
+        # ORIGINAL CODE with reset states samping
+        # ---------------------------------------
+        # with torch.device(self.device):
+        #     b = len(env_idx)
+        #     self.table_scene.initialize(env_idx)
+
+        #     xyz = torch.zeros((b, 3))
+        #     xyz[:, 2] = 0.02
+        #     xy = torch.rand((b, 2)) * 0.2 - 0.1
+        #     region = [[-0.1, -0.2], [0.1, 0.2]]
+        #     sampler = randomization.UniformPlacementSampler(bounds=region, batch_size=b)
+        #     radius = torch.linalg.norm(torch.tensor([0.02, 0.02])) + 0.001
+        #     cubeA_xy = xy + sampler.sample(radius, 100)
+        #     cubeB_xy = xy + sampler.sample(radius, 100)
+        #     cubeC_xy = xy + sampler.sample(radius, 100)
+
+        #     xyz[:, :2] = cubeA_xy
+        #     qs = randomization.random_quaternions(
+        #         b,
+        #         lock_x=True,
+        #         lock_y=True,
+        #         lock_z=False,
+        #     )
+        #     self.cubeA.set_pose(Pose.create_from_pq(p=xyz.clone(), q=qs))
+
+        #     xyz[:, :2] = cubeB_xy
+        #     qs = randomization.random_quaternions(
+        #         b,
+        #         lock_x=True,
+        #         lock_y=True,
+        #         lock_z=False,
+        #     )
+        #     self.cubeB.set_pose(Pose.create_from_pq(p=xyz.clone(), q=qs))
+
+        #     xyz[:, :2] = cubeC_xy
+        #     qs = randomization.random_quaternions(
+        #         b,
+        #         lock_x=True,
+        #         lock_y=True,
+        #         lock_z=False
+        #     )
+        #     self.cubeC.set_pose(Pose.create_from_pq(p=xyz, q=qs))
 
     def evaluate(self):
         pos_A = self.cubeA.pose.p

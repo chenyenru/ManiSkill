@@ -51,7 +51,11 @@ def solve(env: StackPyramidEnv, move_cube_a_to_b=True, seed=None, debug=False, v
         depth=FINGER_LENGTH,
     )
     closing, center = grasp_info["closing"], grasp_info["center"]
-    distance = np.abs(np.linalg.norm(moving_cube.pose.sp.p, axis=0) - np.linalg.norm(target_cube.pose.sp.p, axis=0))
+    distance = np.linalg.norm(moving_cube.pose.sp.p - target_cube.pose.sp.p)
+    print(f"Cube A: {env.cubeA.pose.sp.p}")
+    print(f"Cube B: {env.cubeB.pose.sp.p}")
+    print(f"Moving Cube: {moving_cube.pose.sp.p}")
+    print(f"Target Cube: {target_cube.pose.sp.p}")
     print(f"Distance: {distance}")
     if (distance > 0.009):
         print(f"Distance >= 0.009: {distance}")
