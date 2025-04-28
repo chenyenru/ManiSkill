@@ -2,6 +2,7 @@ import multiprocessing as mp
 import os
 from copy import deepcopy
 import time
+import json
 import argparse
 import gymnasium as gym
 import numpy as np
@@ -41,21 +42,40 @@ def parse_args(args=None):
     parser.add_argument("--record-dir", type=str, default="demos", help="where to save the recorded trajectories")
     parser.add_argument("--num-procs", type=int, default=1, help="Number of processes to use to help parallelize the trajectory replay process. This uses CPU multiprocessing and only works with the CPU simulation backend at the moment.")
     parser.add_argument("--ab", type=float, default=50.0, help="Percentage of trajectories where cube A is moved to cube B")
+    parser.add_argument("--cubeA", type=str, default=None,
+                        help="JSON string for StackPyramid-v1 Cube A reset state, e.g. '{\"p\": [0,0,0.1], \"q\": [0,0,0,1]}'")
+    parser.add_argument("--cubeB", type=str, default=None,
+                        help="JSON string for StackPyramid-v1 Cube B reset state")
+    parser.add_argument("--cubeC", type=str, default=None,
+                        help="JSON string for StackPyramid-v1 Cube C reset state")
 
     return parser.parse_args()
 
 def _main(args, proc_id: int = 0, start_seed: int = 0, num_a_to_b: int = 0) -> str:
     env_id = args.env_id
-    env = gym.make(
-        env_id,
-        obs_mode=args.obs_mode,
-        control_mode="pd_joint_pos",
-        render_mode=args.render_mode,
-        sensor_configs=dict(shader_pack=args.shader),
-        human_render_camera_configs=dict(shader_pack=args.shader),
-        viewer_camera_configs=dict(shader_pack=args.shader),
-        sim_backend=args.sim_backend
-    )
+    if (env_id == "StackPyramid-v1"):
+        env = gym.make(
+            env_id,
+            obs_mode=args.obs_mode,
+            control_mode="pd_joint_pos",
+            render_mode=args.render_mode,
+            sensor_configs=dict(shader_pack=args.shader),
+            human_render_camera_configs=dict(shader_pack=args.shader),
+            viewer_camera_configs=dict(shader_pack=args.shader),
+            sim_backend=args.sim_backend,
+            reset_states=args.reset_states
+        )
+    else:
+        env = gym.make(
+            env_id,
+            obs_mode=args.obs_mode,
+            control_mode="pd_joint_pos",
+            render_mode=args.render_mode,
+            sensor_configs=dict(shader_pack=args.shader),
+            human_render_camera_configs=dict(shader_pack=args.shader),
+            viewer_camera_configs=dict(shader_pack=args.shader),
+            sim_backend=args.sim_backend
+        )
     if env_id not in MP_SOLUTIONS:
         raise RuntimeError(f"No already written motion planning solutions for {env_id}. Available options are {list(MP_SOLUTIONS.keys())}")
 
@@ -132,6 +152,15 @@ def _main(args, proc_id: int = 0, start_seed: int = 0, num_a_to_b: int = 0) -> s
     return output_h5_path
 
 def main(args):
+    reset_states = {}
+    if args.cubeA:
+        reset_states["cubeA"] = json.loads(args.cubeA)
+    if args.cubeB:
+        reset_states["cubeB"] = json.loads(args.cubeB)
+    if args.cubeC:
+        reset_states["cubeC"] = json.loads(args.cubeC)
+    args.reset_states = reset_states
+
     if args.num_procs > 1 and args.num_procs < args.num_traj:
         if args.num_traj < args.num_procs:
             raise ValueError("Number of trajectories should be greater than or equal to number of processes")

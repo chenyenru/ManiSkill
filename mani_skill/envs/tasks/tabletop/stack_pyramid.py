@@ -46,7 +46,22 @@ class StackPyramidEnv(BaseEnv):
     def __init__(
         self, *args, robot_uids="panda_wristcam", robot_init_qpos_noise=0.02, **kwargs
     ):
+        """
+        reset_states: Optional dict to override the reset state.
+          Expected format:
+              {
+                  "cubeA": {"p": [x, y, z], "q": [qx, qy, qz, qw]},  # optional "q" can be omitted
+                  "cubeB": {"p": [x, y, z], "q": [qx, qy, qz, qw]},
+                  "cubeC": {"p": [x, y, z], "q": [qx, qy, qz, qw]}
+              }
+        """
         self.robot_init_qpos_noise = robot_init_qpos_noise
+        if "reset_states" in kwargs.keys():
+            self.reset_states = kwargs["reset_states"]
+            kwargs.pop("reset_states", None)
+        else:
+            self.reset_states = None
+
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     @property
@@ -74,95 +89,57 @@ class StackPyramidEnv(BaseEnv):
         self.cubeC = actors.build_cube(
             self.scene, half_size=0.02, color=[0, 0, 1, 1], name="cubeC", initial_pose=sapien.Pose(p=[-1, 0, 0.1])
         )
-
+    
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
-        # EXPERIMENT for Fixed Reset States
         with torch.device(self.device):
             b = len(env_idx)
             self.table_scene.initialize(env_idx)
             
-            # Use the cube half size (assumed same for all cubes)
-            cube_half = self.cube_half_size[0].item()  # e.g. 0.02
-
-            # Sample a common base position for cubes A and B on the table
-            # base_xy = torch.rand((b, 2)) * 0.2 - 0.1
-            base_xy = torch.tensor([0.0, 0.0], device=self.device).repeat(b, 1)
-
+            # Default fixed quaternion if not provided in reset_states:
+            # FIXED_QS_EULER = torch.zeros((1, 3))
+            # FIXED_QS = matrix_to_quaternion(euler_angles_to_matrix(FIXED_QS_EULER, convention="XYZ"))
+            FIXED_QS = torch.tensor([0,0,0,1], device=self.device)
             
-            # Create a sampler for small random offsets in a limited region
-            region = [[-0.05, -0.05], [0.05, 0.05]]
-            sampler = randomization.UniformPlacementSampler(bounds=region, batch_size=b)
-            
-            # Fixed offsets for Cube A and Cube B
-            offset_A = torch.tensor([-0.06, 0.05], device=self.device).repeat(b, 1)
-            offset_B = torch.tensor([0.06, -0.05], device=self.device).repeat(b, 1)
-            cubeA_xy = base_xy + offset_A
-            cubeB_xy = base_xy + offset_B
-            
-            # Place Cube C at the midpoint between Cube A and Cube B
-            cubeC_xy = torch.tensor([0.1, 0.1], device=self.device).repeat(b, 1)
+            if self.reset_states != {} and self.reset_states is not None:
+                logger.info(f"Reset States: {self.reset_states}")
+                # Use provided reset states for cubes if available. Expects one dict per cube.
+                for cube_name, cube in zip(["cubeA", "cubeB", "cubeC"], [self.cubeA, self.cubeB, self.cubeC]):
+                    print(f"self.reset_states: {self.reset_states}")
+                    if cube_name in self.reset_states:
+                        state = self.reset_states[cube_name]
+                        # Convert provided pose to torch tensors
+                        p = torch.tensor(state.get("p"), device=self.device).view(1, 3)
+                        # If quaternion provided, use it; otherwise use the fixed one.
+                        q = torch.tensor(state.get("q"), device=self.device).view(1, 4) if "q" in state else FIXED_QS
+                        cube.set_pose(Pose.create_from_pq(p=p, q=q))
+                    else:
+                        # Fallback to default fixed pose:
+                        xyz = torch.zeros((b, 3))
+                        xyz[:, 2] = 0.02
+                        xyz[:, :2] = torch.zeros((b, 2), device=self.device)
+                        cube.set_pose(Pose.create_from_pq(p=xyz, q=FIXED_QS))
+            else:
+                base_xy = torch.tensor([0.0, 0.0], device=self.device).repeat(b, 1)
+                offset_A = torch.tensor([-0.06, 0.05], device=self.device).repeat(b, 1)
+                offset_B = torch.tensor([0.06, -0.05], device=self.device).repeat(b, 1)
+                cubeA_xy = base_xy + offset_A
+                cubeB_xy = base_xy + offset_B
+                cubeC_xy = torch.tensor([-0.12, -0.02], device=self.device).repeat(b, 1)
 
-            FIXED_QS_EULER = torch.zeros((1, 3))
-            FIXED_QS = matrix_to_quaternion(euler_angles_to_matrix(FIXED_QS_EULER, convention="XYZ"))
-            # Set Cube A at table level (z = 0.02)
-            xyz = torch.zeros((b, 3))
-            xyz[:, 2] = 0.02  # table height offset
-            xyz[:, :2] = cubeA_xy
-            qs = FIXED_QS
-            self.cubeA.set_pose(Pose.create_from_pq(p=xyz.clone(), q=qs))
+                # Cube A
+                xyz = torch.zeros((b, 3), device=self.device)
+                xyz[:, 2] = 0.02  # table height offset
+                xyz[:, :2] = cubeA_xy
+                self.cubeA.set_pose(Pose.create_from_pq(p=xyz.clone(), q=FIXED_QS))
 
-            # Set Cube B at table level (z = 0.02)
-            xyz[:, :2] = cubeB_xy
-            qs = FIXED_QS
-            self.cubeB.set_pose(Pose.create_from_pq(p=xyz.clone(), q=qs))
-            
-            # Set Cube C
-            xyz[:, 2] = 0.02
-            xyz[:, :2] = cubeC_xy
-            qs = FIXED_QS
-            self.cubeC.set_pose(Pose.create_from_pq(p=xyz, q=qs))
-        # ORIGINAL CODE with reset states samping
-        # ---------------------------------------
-        # with torch.device(self.device):
-        #     b = len(env_idx)
-        #     self.table_scene.initialize(env_idx)
-
-        #     xyz = torch.zeros((b, 3))
-        #     xyz[:, 2] = 0.02
-        #     xy = torch.rand((b, 2)) * 0.2 - 0.1
-        #     region = [[-0.1, -0.2], [0.1, 0.2]]
-        #     sampler = randomization.UniformPlacementSampler(bounds=region, batch_size=b)
-        #     radius = torch.linalg.norm(torch.tensor([0.02, 0.02])) + 0.001
-        #     cubeA_xy = xy + sampler.sample(radius, 100)
-        #     cubeB_xy = xy + sampler.sample(radius, 100)
-        #     cubeC_xy = xy + sampler.sample(radius, 100)
-
-        #     xyz[:, :2] = cubeA_xy
-        #     qs = randomization.random_quaternions(
-        #         b,
-        #         lock_x=True,
-        #         lock_y=True,
-        #         lock_z=False,
-        #     )
-        #     self.cubeA.set_pose(Pose.create_from_pq(p=xyz.clone(), q=qs))
-
-        #     xyz[:, :2] = cubeB_xy
-        #     qs = randomization.random_quaternions(
-        #         b,
-        #         lock_x=True,
-        #         lock_y=True,
-        #         lock_z=False,
-        #     )
-        #     self.cubeB.set_pose(Pose.create_from_pq(p=xyz.clone(), q=qs))
-
-        #     xyz[:, :2] = cubeC_xy
-        #     qs = randomization.random_quaternions(
-        #         b,
-        #         lock_x=True,
-        #         lock_y=True,
-        #         lock_z=False
-        #     )
-        #     self.cubeC.set_pose(Pose.create_from_pq(p=xyz, q=qs))
+                # Set Cube B
+                xyz[:, :2] = cubeB_xy
+                self.cubeB.set_pose(Pose.create_from_pq(p=xyz.clone(), q=FIXED_QS))
+                
+                # Set Cube C
+                xyz[:, 2] = 0.02
+                xyz[:, :2] = cubeC_xy
+                self.cubeC.set_pose(Pose.create_from_pq(p=xyz, q=FIXED_QS))
 
     def evaluate(self):
         pos_A = self.cubeA.pose.p
@@ -181,12 +158,12 @@ class StackPyramidEnv(BaseEnv):
                 
                 xy_flag = xy_offset <= tolerance
                 z_flag = z_offset <= tolerance
-
             else:
                 xy_offset = torch.linalg.norm(offset[..., :2], axis=-1) - torch.linalg.norm(2 * self.cube_half_size[:2])
                 z_offset = torch.abs(offset[..., 2] - self.cube_half_size[2])
                 xy_flag = xy_offset <= 0.05
                 z_flag = z_offset <= 0.05
+                
             is_cubeA_on_cubeB = torch.logical_and(xy_flag, z_flag)
             is_cubeA_static = cube_a.is_static(lin_thresh=1e-2, ang_thresh=0.5)
             is_cubeA_grasped = self.agent.is_grasping(cube_a)
@@ -197,9 +174,9 @@ class StackPyramidEnv(BaseEnv):
         success_A_B = evaluate_cube_distance(offset_AB, self.cubeA, self.cubeB, "next_to")
         success_C_B = evaluate_cube_distance(offset_BC, self.cubeC, self.cubeB, "top")
         success_C_A = evaluate_cube_distance(offset_AC, self.cubeC, self.cubeA, "top")
+
         
         success = torch.logical_and(success_A_B, torch.logical_and(success_C_B, success_C_A))
-
         return {
             "success": success,
         }

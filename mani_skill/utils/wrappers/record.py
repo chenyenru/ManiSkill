@@ -457,6 +457,9 @@ class RecordEpisode(gym.Wrapper):
         self.last_reset_kwargs = copy.deepcopy(dict(options=options, **kwargs))
         if seed is not None:
             self.last_reset_kwargs.update(seed=seed)
+        if "reset_states" not in self.last_reset_kwargs and hasattr(self.env, "reset_states"):
+            self.last_reset_kwargs["reset_states"] = self.env.reset_states
+
         return obs, info
 
     def step(self, action):
