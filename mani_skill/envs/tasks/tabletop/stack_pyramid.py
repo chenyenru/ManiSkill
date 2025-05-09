@@ -58,9 +58,14 @@ class StackPyramidEnv(BaseEnv):
         self.robot_init_qpos_noise = robot_init_qpos_noise
         if "reset_states" in kwargs.keys():
             self.reset_states = kwargs["reset_states"]
-            kwargs.pop("reset_states", None)
         else:
             self.reset_states = None
+        kwargs.pop("reset_states", None)
+        if "sample_region" in kwargs.keys():
+            self.sample_region = kwargs["sample_region"]
+            kwargs.pop("sample_region", None)
+        else:
+            self.sample_region = None
 
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
@@ -99,29 +104,11 @@ class StackPyramidEnv(BaseEnv):
             # FIXED_QS_EULER = torch.zeros((1, 3))
             # FIXED_QS = matrix_to_quaternion(euler_angles_to_matrix(FIXED_QS_EULER, convention="XYZ"))
             FIXED_QS = torch.tensor([0,0,0,1], device=self.device)
-            
-            if self.reset_states != {} and self.reset_states is not None:
-                logger.info(f"Reset States: {self.reset_states}")
-                # Use provided reset states for cubes if available. Expects one dict per cube.
-                for cube_name, cube in zip(["cubeA", "cubeB", "cubeC"], [self.cubeA, self.cubeB, self.cubeC]):
-                    print(f"self.reset_states: {self.reset_states}")
-                    if cube_name in self.reset_states:
-                        state = self.reset_states[cube_name]
-                        # Convert provided pose to torch tensors
-                        p = torch.tensor(state.get("p"), device=self.device).view(1, 3)
-                        # If quaternion provided, use it; otherwise use the fixed one.
-                        q = torch.tensor(state.get("q"), device=self.device).view(1, 4) if "q" in state else FIXED_QS
-                        cube.set_pose(Pose.create_from_pq(p=p, q=q))
-                    else:
-                        # Fallback to default fixed pose:
-                        xyz = torch.zeros((b, 3))
-                        xyz[:, 2] = 0.02
-                        xyz[:, :2] = torch.zeros((b, 2), device=self.device)
-                        cube.set_pose(Pose.create_from_pq(p=xyz, q=FIXED_QS))
-            else:
-                base_xy = torch.tensor([0.0, 0.0], device=self.device).repeat(b, 1)
-                offset_A = torch.tensor([-0.06, 0.05], device=self.device).repeat(b, 1)
-                offset_B = torch.tensor([0.06, -0.05], device=self.device).repeat(b, 1)
+            if self.sample_region is not None:
+                sample_region = torch.distributions.uniform.Uniform(-0.1, 0.1)
+                offset_A = sample_region.sample(1, 2, b)
+                offset_B = sample_region.sample(1, 2, b)
+                offset_C = sample_region.sample(1, 2, b)
                 cubeA_xy = base_xy + offset_A
                 cubeB_xy = base_xy + offset_B
                 cubeC_xy = torch.tensor([-0.12, -0.02], device=self.device).repeat(b, 1)
@@ -135,11 +122,52 @@ class StackPyramidEnv(BaseEnv):
                 # Set Cube B
                 xyz[:, :2] = cubeB_xy
                 self.cubeB.set_pose(Pose.create_from_pq(p=xyz.clone(), q=FIXED_QS))
-                
+                    
                 # Set Cube C
                 xyz[:, 2] = 0.02
                 xyz[:, :2] = cubeC_xy
                 self.cubeC.set_pose(Pose.create_from_pq(p=xyz, q=FIXED_QS))
+            else:
+                if self.reset_states != {} and self.reset_states is not None:
+                    logger.info(f"Reset States: {self.reset_states}")
+                    # Use provided reset states for cubes if available. Expects one dict per cube.
+                    for cube_name, cube in zip(["cubeA", "cubeB", "cubeC"], [self.cubeA, self.cubeB, self.cubeC]):
+                        print(f"self.reset_states: {self.reset_states}")
+                        if cube_name in self.reset_states:
+                            state = self.reset_states[cube_name]
+                            # Convert provided pose to torch tensors
+                            p = torch.tensor(state.get("p"), device=self.device).view(1, 3)
+                            # If quaternion provided, use it; otherwise use the fixed one.
+                            q = torch.tensor(state.get("q"), device=self.device).view(1, 4) if "q" in state else FIXED_QS
+                            cube.set_pose(Pose.create_from_pq(p=p, q=q))
+                        else:
+                            # Fallback to default fixed pose:
+                            xyz = torch.zeros((b, 3))
+                            xyz[:, 2] = 0.02
+                            xyz[:, :2] = torch.zeros((b, 2), device=self.device)
+                            cube.set_pose(Pose.create_from_pq(p=xyz, q=FIXED_QS))
+                else:
+                    base_xy = torch.tensor([0.0, 0.0], device=self.device).repeat(b, 1)
+                    offset_A = torch.tensor([-0.07, 0.05], device=self.device).repeat(b, 1)
+                    offset_B = torch.tensor([0.08, -0.1], device=self.device).repeat(b, 1)
+                    cubeA_xy = base_xy + offset_A
+                    cubeB_xy = base_xy + offset_B
+                    cubeC_xy = torch.tensor([-0.3, -0.025], device=self.device).repeat(b, 1)
+
+                    # Cube A
+                    xyz = torch.zeros((b, 3), device=self.device)
+                    xyz[:, 2] = 0.02  # table height offset
+                    xyz[:, :2] = cubeA_xy
+                    self.cubeA.set_pose(Pose.create_from_pq(p=xyz.clone(), q=FIXED_QS))
+
+                    # Set Cube B
+                    xyz[:, :2] = cubeB_xy
+                    self.cubeB.set_pose(Pose.create_from_pq(p=xyz.clone(), q=FIXED_QS))
+                    
+                    # Set Cube C
+                    xyz[:, 2] = 0.02
+                    xyz[:, :2] = cubeC_xy
+                    self.cubeC.set_pose(Pose.create_from_pq(p=xyz, q=FIXED_QS))
 
     def evaluate(self):
         pos_A = self.cubeA.pose.p

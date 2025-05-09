@@ -267,6 +267,7 @@ def replay_cpu_sim(
             # and optionally set the first environment state
             env.reset(**reset_kwargs)
             if ori_env is not None:
+                reset_kwargs.pop("reset_states", None)
                 ori_env.reset(**reset_kwargs)
 
             # set first environment state and update recorded env state

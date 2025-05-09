@@ -372,7 +372,7 @@ class RecordEpisode(gym.Wrapper):
                     self.flush_trajectory(
                         env_idxs_to_flush=common.to_numpy(options["env_idx"])
                     )
-
+        kwargs.pop("reset_states", None)
         obs, info = super().reset(*args, seed=seed, options=options, **kwargs)
         if info["reconfigure"]:
             # if we reconfigure, there is the possibility that state dictionary looks different now

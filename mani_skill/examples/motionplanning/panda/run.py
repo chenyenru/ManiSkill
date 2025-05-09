@@ -48,6 +48,8 @@ def parse_args(args=None):
                         help="JSON string for StackPyramid-v1 Cube B reset state")
     parser.add_argument("--cubeC", type=str, default=None,
                         help="JSON string for StackPyramid-v1 Cube C reset state")
+    parser.add_argument("--sample-region", type=str, default=None,
+                    help="Sample region")
 
     return parser.parse_args()
 
@@ -63,7 +65,8 @@ def _main(args, proc_id: int = 0, start_seed: int = 0, num_a_to_b: int = 0) -> s
             human_render_camera_configs=dict(shader_pack=args.shader),
             viewer_camera_configs=dict(shader_pack=args.shader),
             sim_backend=args.sim_backend,
-            reset_states=args.reset_states
+            reset_states=args.reset_states,
+            sample_region=args.sample_region
         )
     else:
         env = gym.make(
