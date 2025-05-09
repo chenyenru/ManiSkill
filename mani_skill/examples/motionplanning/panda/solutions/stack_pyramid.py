@@ -4,7 +4,7 @@ import numpy as np
 import sapien
 from transforms3d.euler import euler2quat
 
-from mani_skill.envs.tasks import StackPyramidEnv
+from envs.stack_pyramid import StackPyramidEnv
 from mani_skill.examples.motionplanning.panda.motionplanner import \
     PandaArmMotionPlanningSolver
 from mani_skill.examples.motionplanning.panda.utils import (
@@ -54,11 +54,12 @@ def solve(env: StackPyramidEnv, move_cube_a_to_b=True, seed=None, debug=False, v
     distance = np.linalg.norm(moving_cube.pose.sp.p - target_cube.pose.sp.p)
     print(f"Cube A: {env.cubeA.pose.sp.p}")
     print(f"Cube B: {env.cubeB.pose.sp.p}")
-    print(f"Moving Cube: {moving_cube.pose.sp.p}")
-    print(f"Target Cube: {target_cube.pose.sp.p}")
-    print(f"Distance: {distance}")
-    if (distance > 0.009):
-        print(f"Distance >= 0.009: {distance}")
+    print(f"Cube C: {env.cubeC.pose.sp.p}")
+    # print(f"Moving Cube: {moving_cube.pose.sp.p}")
+    # print(f"Distance: {distance}")
+    need_move_a_b = (distance > 0.009)
+    if need_move_a_b:
+        # print(f"Distance >= 0.009: {distance}")
         planner.close_gripper()
         grasp_pose = env.agent.build_grasp_pose(approaching, closing, moving_cube.pose.sp.p)
 
@@ -73,14 +74,13 @@ def solve(env: StackPyramidEnv, move_cube_a_to_b=True, seed=None, debug=False, v
         # Move to Goal Pose
         goal_pose = sapien.Pose(target_cube.pose.sp.p * 0.8, grasp_pose.q)
         planner.move_to_pose_with_screw(goal_pose)
-        res = planner.open_gripper()
 
     # -------------------------------------------------------------------------- #
     # Stack Cube C onto Cube A and B
     # -------------------------------------------------------------------------- #
 
     obb = get_actor_obb(env.cubeC)
-    target_closing = env.agent.tcp.pose.to_transformation_matrix()[0, :3, 1].numpy()
+    target_closing = env.agent.tcp.pose.to_transformation_matrix()[0, :3, 1].cpu().numpy()
     grasp_info = compute_grasp_info_by_obb(
         obb,
         approaching=approaching,
@@ -113,6 +113,8 @@ def solve(env: StackPyramidEnv, move_cube_a_to_b=True, seed=None, debug=False, v
 
     reach_pose = grasp_pose * sapien.Pose([0, 0, -0.05])
     planner.move_to_pose_with_screw(reach_pose)
+    if need_move_a_b:
+         planner.open_gripper()
 
     # -------------------------------------------------------------------------- #
     # Grasp
@@ -132,7 +134,7 @@ def solve(env: StackPyramidEnv, move_cube_a_to_b=True, seed=None, debug=False, v
     goal_pose_A = env.cubeA.pose * sapien.Pose([0, 0, env.cube_half_size[2] * 2])
     goal_pose_B = env.cubeB.pose * sapien.Pose([0, 0, env.cube_half_size[2] * 2])
     goal_pose_p = (goal_pose_A.p + goal_pose_B.p)/2
-    offset = (goal_pose_p - env.cubeC.pose.p).numpy()[0] # remember that all data in ManiSkill is batched and a torch tensor
+    offset = (goal_pose_p - env.cubeC.pose.p).cpu().numpy()[0] # remember that all data in ManiSkill is batched and a torch tensor
     align_pose = sapien.Pose(lift_pose.p + offset, lift_pose.q)
     planner.move_to_pose_with_screw(align_pose)
 
