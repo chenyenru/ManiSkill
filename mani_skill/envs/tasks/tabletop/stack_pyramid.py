@@ -63,10 +63,10 @@ class StackPyramidEnv(BaseEnv):
         kwargs.pop("reset_states", None)
         if "sample_region" in kwargs.keys():
             self.sample_region = kwargs["sample_region"]
+            print("Sample region: ", self.sample_region)
             kwargs.pop("sample_region", None)
         else:
             self.sample_region = None
-
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     @property
@@ -94,39 +94,49 @@ class StackPyramidEnv(BaseEnv):
         self.cubeC = actors.build_cube(
             self.scene, half_size=0.02, color=[0, 0, 1, 1], name="cubeC", initial_pose=sapien.Pose(p=[-1, 0, 0.1])
         )
-    
+        print(self.sample_region)
+        if self.sample_region is not None:
+            self.goal_site = actors.build_box(self.scene, half_sizes=[self.sample_region, self.sample_region, 0.01], color=[1,1,0,1], name="goal_site", body_type="kinematic", add_collision=False, initial_pose=sapien.Pose(p=[0,0,0]))
+            self._hidden_objects.append(self.goal_site)
+
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
         with torch.device(self.device):
             b = len(env_idx)
             self.table_scene.initialize(env_idx)
+            if self.sample_region is not None:
+                goal_site_xy = torch.tensor([0.0, 0.0], device=self.device).repeat(b, 1)
+                goal_site_xyz = torch.zeros((b, 3), device=self.device)
+                goal_site_xyz[:, :2] = goal_site_xy
+                self.goal_site.set_pose(Pose.create_from_pq(p=goal_site_xyz.clone(), q=torch.tensor([0,0,0,1])))
             
             # Default fixed quaternion if not provided in reset_states:
             # FIXED_QS_EULER = torch.zeros((1, 3))
             # FIXED_QS = matrix_to_quaternion(euler_angles_to_matrix(FIXED_QS_EULER, convention="XYZ"))
             FIXED_QS = torch.tensor([0,0,0,1], device=self.device)
             if self.sample_region is not None:
-                sample_region = torch.distributions.uniform.Uniform(-0.1, 0.1)
-                offset_A = sample_region.sample(1, 2, b)
-                offset_B = sample_region.sample(1, 2, b)
-                offset_C = sample_region.sample(1, 2, b)
+                sample_region = torch.distributions.uniform.Uniform(-self.sample_region, self.sample_region)
+                base_xy = torch.tensor([0.0, 0.0], device=self.device).repeat(b, 1)
+
+                offset_A, offset_B, offset_C = sample_safe_offsets(b, sample_region, min_distance=0.1, device=self.device)
+
                 cubeA_xy = base_xy + offset_A
                 cubeB_xy = base_xy + offset_B
-                cubeC_xy = torch.tensor([-0.12, -0.02], device=self.device).repeat(b, 1)
+                cubeC_xy = base_xy + offset_C
 
-                # Cube A
                 xyz = torch.zeros((b, 3), device=self.device)
                 xyz[:, 2] = 0.02  # table height offset
+
+                # Cube A
                 xyz[:, :2] = cubeA_xy
-                self.cubeA.set_pose(Pose.create_from_pq(p=xyz.clone(), q=FIXED_QS))
+                self.cubeA.set_pose(Pose.create_from_pq(p=xyz.clone(), q=FIXED_QS.clone()))
 
                 # Set Cube B
                 xyz[:, :2] = cubeB_xy
-                self.cubeB.set_pose(Pose.create_from_pq(p=xyz.clone(), q=FIXED_QS))
+                self.cubeB.set_pose(Pose.create_from_pq(p=xyz.clone(), q=FIXED_QS.clone()))
                     
                 # Set Cube C
-                xyz[:, 2] = 0.02
                 xyz[:, :2] = cubeC_xy
-                self.cubeC.set_pose(Pose.create_from_pq(p=xyz, q=FIXED_QS))
+                self.cubeC.set_pose(Pose.create_from_pq(p=xyz.clone(), q=FIXED_QS.clone()))
             else:
                 if self.reset_states != {} and self.reset_states is not None:
                     logger.info(f"Reset States: {self.reset_states}")
@@ -224,3 +234,36 @@ class StackPyramidEnv(BaseEnv):
                 cubeA_to_cubeC_pos=self.cubeC.pose.p - self.cubeA.pose.p,
             )
         return obs
+
+def sample_safe_offsets(b: int, sample_region: torch.distributions.Uniform, min_distance: float = 0.1, max_iter: int = 100, device: torch.device = torch.device("cpu")):
+    """
+    For each sample in the batch, sample three (2,) offsets such that
+    all pairwise distances are at least min_distance.
+    
+    Returns three tensors of shape (b, 2) for offsets A, B, and C.
+    """
+    offsets_A = torch.zeros((b, 2), device=device)
+    offsets_B = torch.zeros((b, 2), device=device)
+    offsets_C = torch.zeros((b, 2), device=device)
+    for i in range(b):
+        valid = False
+        iter_count = 0
+        while (not valid) and (iter_count < max_iter):
+            # Sample offsets for cube A, B, and C for the i-th sample.
+            off = sample_region.sample((3, 2))  # shape (3,2)
+            d_AB = torch.norm(off[0] - off[1])
+            d_AC = torch.norm(off[0] - off[2])
+            d_BC = torch.norm(off[1] - off[2])
+            if d_AB >= min_distance and d_AC >= min_distance and d_BC >= min_distance:
+                offsets_A[i] = off[0]
+                offsets_B[i] = off[1]
+                offsets_C[i] = off[2]
+                valid = True
+            iter_count += 1
+        if not valid:
+            # If no valid sample after max_iter iterations, simply use the last sample.
+            print("no valid sample")
+            offsets_A[i] = off[0]
+            offsets_B[i] = off[1]
+            offsets_C[i] = off[2]
+    return offsets_A, offsets_B, offsets_C

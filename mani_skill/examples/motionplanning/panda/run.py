@@ -48,7 +48,7 @@ def parse_args(args=None):
                         help="JSON string for StackPyramid-v1 Cube B reset state")
     parser.add_argument("--cubeC", type=str, default=None,
                         help="JSON string for StackPyramid-v1 Cube C reset state")
-    parser.add_argument("--sample-region", type=str, default=None,
+    parser.add_argument("--sample-region", type=float, default=None,
                     help="Sample region")
 
     return parser.parse_args()
