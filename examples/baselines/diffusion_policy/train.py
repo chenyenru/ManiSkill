@@ -313,6 +313,7 @@ if __name__ == "__main__":
     assert args.max_episode_steps != None, "max_episode_steps must be specified as imitation learning algorithms task solve speed is dependent on the data you train on"
     env_kwargs["max_episode_steps"] = args.max_episode_steps
     env_kwargs["sample_region"] = args.sample_region
+    env_kwargs["eval_sample_region"] = args.eval_sample_region
     other_kwargs = dict(obs_horizon=args.obs_horizon)
     envs = make_eval_envs(args.env_id, args.num_eval_envs, args.sim_backend, env_kwargs, other_kwargs, video_dir=f'runs/{run_name}/videos' if args.capture_video else None)
 
