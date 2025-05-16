@@ -102,6 +102,8 @@ class Args:
     """Number of behaviors in the demonstration dataset"""
     sample_region: Optional[float] = None
     """Sample region for the cubes"""
+    eval_sample_region: Optional[float] = None
+    """Eval sample region for the cubes"""
 
 
 class SmallDemoDataset_DiffusionPolicy(Dataset): # Load everything into GPU memory

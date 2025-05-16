@@ -67,6 +67,16 @@ class StackPyramidEnv(BaseEnv):
             kwargs.pop("sample_region", None)
         else:
             self.sample_region = None
+        if "eval_sample_region" in kwargs.keys():
+            self.sample_region = kwargs["eval_sample_region"]
+            print("Eval Sample region: ", self.eval_sample_region)
+            kwargs.pop("sample_region", None)
+        else:
+            if self.sample_region is not None:
+                self.eval_sample_region = self.sample_region
+            else:
+                self.eval_sample_region = None
+
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     @property
@@ -114,7 +124,10 @@ class StackPyramidEnv(BaseEnv):
             # FIXED_QS = matrix_to_quaternion(euler_angles_to_matrix(FIXED_QS_EULER, convention="XYZ"))
             FIXED_QS = torch.tensor([0,0,0,1], device=self.device)
             if self.sample_region is not None:
-                sample_region = torch.distributions.uniform.Uniform(-self.sample_region, self.sample_region)
+                if self.eval_sample_region is not None:
+                    sample_region = torch.distributions.uniform.Uniform(-self.eval_sample_region, self.eval_sample_region)
+                else:
+                    sample_region = torch.distributions.uniform.Uniform(-self.sample_region, self.sample_region)
                 base_xy = torch.tensor([0.0, 0.0], device=self.device).repeat(b, 1)
 
                 offset_A, offset_B, offset_C = sample_safe_offsets(b, sample_region, min_distance=0.1, device=self.device)
