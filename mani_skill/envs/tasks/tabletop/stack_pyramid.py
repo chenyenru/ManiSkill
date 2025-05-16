@@ -68,9 +68,9 @@ class StackPyramidEnv(BaseEnv):
         else:
             self.sample_region = None
         if "eval_sample_region" in kwargs.keys():
-            self.sample_region = kwargs["eval_sample_region"]
+            self.eval_sample_region = kwargs["eval_sample_region"]
             print("Eval Sample region: ", self.eval_sample_region)
-            kwargs.pop("sample_region", None)
+            kwargs.pop("eval_sample_region", None)
         else:
             if self.sample_region is not None:
                 self.eval_sample_region = self.sample_region
