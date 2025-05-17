@@ -202,20 +202,18 @@ class StackPyramidEnv(BaseEnv):
         offset_AC = pos_A - pos_C
 
         def evaluate_cube_distance(offset, cube_a, cube_b, top_or_next):
-            tolerance = 0.5
+            xy_flag = (torch.linalg.norm(offset[..., :2], axis=1) 
+                       <= torch.linalg.norm(2*self.cube_half_size[:2]) 
+                       + 0.005
+                       )
+            z_flag = torch.abs(offset[..., 2]) > 0.02
             if top_or_next == "top":
-                xy_offset = torch.linalg.norm(offset[..., :2], axis=-1) - torch.linalg.norm(self.cube_half_size[:2])
-                z_offset = torch.linalg.norm(offset[..., 2]) - torch.linalg.norm(2 * self.cube_half_size[2])
-                
-                xy_flag = xy_offset <= tolerance
-                z_flag = z_offset <= tolerance
+                is_cubeA_on_cubeB = torch.logical_and(xy_flag, z_flag)
+            elif top_or_next == "next_to":
+                is_cubeA_on_cubeB = xy_flag
             else:
-                xy_offset = torch.linalg.norm(offset[..., :2], axis=-1) - torch.linalg.norm(2 * self.cube_half_size[:2])
-                z_offset = torch.abs(offset[..., 2] - self.cube_half_size[2])
-                xy_flag = xy_offset <= 0.05
-                z_flag = z_offset <= 0.05
-                
-            is_cubeA_on_cubeB = torch.logical_and(xy_flag, z_flag)
+                return NotImplementedError(f"Expect top_or_next to be either 'top' or 'next', got {top_or_next}")
+            
             is_cubeA_static = cube_a.is_static(lin_thresh=1e-2, ang_thresh=0.5)
             is_cubeA_grasped = self.agent.is_grasping(cube_a)
 
@@ -225,8 +223,6 @@ class StackPyramidEnv(BaseEnv):
         success_A_B = evaluate_cube_distance(offset_AB, self.cubeA, self.cubeB, "next_to")
         success_C_B = evaluate_cube_distance(offset_BC, self.cubeC, self.cubeB, "top")
         success_C_A = evaluate_cube_distance(offset_AC, self.cubeC, self.cubeA, "top")
-
-        
         success = torch.logical_and(success_A_B, torch.logical_and(success_C_B, success_C_A))
         return {
             "success": success,
