@@ -4,7 +4,7 @@ import numpy as np
 import sapien
 from transforms3d.euler import euler2quat
 
-from envs.stack_pyramid import StackPyramidEnv
+from mani_skill.envs.tasks import StackPyramidEnv
 from mani_skill.examples.motionplanning.panda.motionplanner import \
     PandaArmMotionPlanningSolver
 from mani_skill.examples.motionplanning.panda.utils import (
@@ -51,15 +51,9 @@ def solve(env: StackPyramidEnv, move_cube_a_to_b=True, seed=None, debug=False, v
         depth=FINGER_LENGTH,
     )
     closing, center = grasp_info["closing"], grasp_info["center"]
-    distance = np.linalg.norm(moving_cube.pose.sp.p - target_cube.pose.sp.p)
-    print(f"Cube A: {env.cubeA.pose.sp.p}")
-    print(f"Cube B: {env.cubeB.pose.sp.p}")
-    print(f"Cube C: {env.cubeC.pose.sp.p}")
-    # print(f"Moving Cube: {moving_cube.pose.sp.p}")
-    # print(f"Distance: {distance}")
-    need_move_a_b = (distance > 0.009)
+    distance = np.abs(np.linalg.norm(moving_cube.pose.sp.p) - np.linalg.norm(target_cube.pose.sp.p))
+    need_move_a_b = (distance > 0.008)
     if need_move_a_b:
-        # print(f"Distance >= 0.009: {distance}")
         planner.close_gripper()
         grasp_pose = env.agent.build_grasp_pose(approaching, closing, moving_cube.pose.sp.p)
 
